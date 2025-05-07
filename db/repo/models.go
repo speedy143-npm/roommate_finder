@@ -43,7 +43,7 @@ type User struct {
 	Email          string           `json:"email"`
 	Password       string           `json:"password"`
 	Bio            string           `json:"bio"`
-	Preferences    PrefJson         `json:"preferences"`
+	Preferences    PrefJson           `json:"preferences"`
 	ProfilePicture *string          `json:"profile_picture"`
 	CreatedAt      pgtype.Timestamp `json:"created_at"`
 }

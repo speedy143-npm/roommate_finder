@@ -8,7 +8,7 @@ CREATE TABLE "users" (
   "password" TEXT NOT NULL, -- Hashed
   "bio" TEXT,
   "preferences" JSONB DEFAULT '{}'::JSONB, -- Stores preferences (e.g., smoking, pets)
-  "profile_picture" VARCHAR(255) BYTEA, -- URL to profile image
+  "profile_picture" VARCHAR(255) , -- URL to profile image
   "created_at" TIMESTAMP DEFAULT now()
 );
 

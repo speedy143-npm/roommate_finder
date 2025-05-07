@@ -1,0 +1,67 @@
+const createUser = `-- name: CreateUser :one
+INSERT INTO users (fname,lname,phoneno,email,password,bio,preferences,profile_picture)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, fname, lname, phoneno, email, password, bio, preferences, profile_picture, created_at
+`
+
+
+  
+type CreateUserParams struct {
+	Fname          string  `json:"fname"`
+	Lname          string  `json:"lname"`
+	Phoneno        string  `json:"phoneno"`
+	Email          string  `json:"email"`
+	Password       string  `json:"password"`
+	Bio            string  `json:"bio"`
+	Preferences    PrefJson`json:"preferences"`
+	ProfilePicture *string `json:"profile_picture"`
+}
+
+type PrefJson  struct {
+	Pet string `json:"pet"`
+	Job string `json:"job"`
+}  
+
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Fname,
+		arg.Lname,
+		arg.Phoneno,
+		arg.Email,
+		arg.Password,
+		arg.Bio,
+		arg.Preferences,
+		arg.ProfilePicture,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Fname,
+		&i.Lname,
+		&i.Phoneno,
+		&i.Email,
+		&i.Password,
+		&i.Bio,
+		&i.Preferences,
+		&i.ProfilePicture,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+
+
+//Model
+type User struct {
+	ID             string           `json:"id"`
+	Fname          string           `json:"fname"`
+	Lname          string           `json:"lname"`
+	Phoneno        string           `json:"phoneno"`
+	Email          string           `json:"email"`
+	Password       string           `json:"password"`
+	Bio            string           `json:"bio"`
+	Preferences    PrefJson         `json:"preferences"`
+	ProfilePicture *string          `json:"profile_picture"`
+	CreatedAt      pgtype.Timestamp `json:"created_at"`
+}

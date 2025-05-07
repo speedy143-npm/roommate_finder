@@ -12,6 +12,7 @@ type Querier interface {
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	GetUserById(ctx context.Context, id string) ([]User, error)
+	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
 }
 
 var _ Querier = (*Queries)(nil)
