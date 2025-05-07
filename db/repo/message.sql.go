@@ -96,6 +96,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 const getUserById = `-- name: GetUserById :many
 SELECT id, fname, lname, phoneno, email, password, bio, preferences, profile_picture, created_at FROM users
 WHERE id = $1
+LIMIT 1
 `
 
 func (q *Queries) GetUserById(ctx context.Context, id string) ([]User, error) {
@@ -127,4 +128,59 @@ func (q *Queries) GetUserById(ctx context.Context, id string) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUserProfile = `-- name: UpdateUserProfile :one
+UPDATE users
+SET
+    fname = COALESCE($2, fname),
+    lname = COALESCE($3, lname),
+    phoneno = COALESCE($4, phoneno),
+    email = COALESCE($5, email),
+    password = COALESCE($6, password),
+    bio = COALESCE($7, bio),
+    preferences = COALESCE($8, preferences),
+    profile_picture = COALESCE($9, profile_picture)
+WHERE id = $1
+RETURNING id, fname, lname, phoneno, email, password, bio, preferences, profile_picture, created_at
+`
+
+type UpdateUserProfileParams struct {
+	ID             string  `json:"id"`
+	Fname          string  `json:"fname"`
+	Lname          string  `json:"lname"`
+	Phoneno        string  `json:"phoneno"`
+	Email          string  `json:"email"`
+	Password       string  `json:"password"`
+	Bio            string  `json:"bio"`
+	Preferences    PrefJson  `json:"preferences"`
+	ProfilePicture *string `json:"profile_picture"`
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserProfile,
+		arg.ID,
+		arg.Fname,
+		arg.Lname,
+		arg.Phoneno,
+		arg.Email,
+		arg.Password,
+		arg.Bio,
+		arg.Preferences,
+		arg.ProfilePicture,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Fname,
+		&i.Lname,
+		&i.Phoneno,
+		&i.Email,
+		&i.Password,
+		&i.Bio,
+		&i.Preferences,
+		&i.ProfilePicture,
+		&i.CreatedAt,
+	)
+	return i, err
 }
