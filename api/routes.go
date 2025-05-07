@@ -29,7 +29,9 @@ func (h *UserHandler) WireHttpHandler() http.Handler {
 
 	// add routes
 	r.POST("/register", h.handleUserRegistration)
-	r.POST("/match", h.handleUserMatch)
+	r.POST("/match/:id1/:id2", h.handleUserMatch)
+	r.GET("/user/:id", h.handleGetUser)
+	r.PATCH("/user/:id", h.handleUpdateUser)
 
 	return r
 }

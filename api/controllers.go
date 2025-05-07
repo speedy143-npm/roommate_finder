@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"reflect"
 	"regexp"
 	"roommate-finder/db/repo"
 
@@ -70,7 +71,78 @@ func (h *UserHandler) handleUserRegistration(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+func (h *UserHandler) handleGetUser(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Id is required"})
+		return
+	}
+
+	user, errs := h.querier.GetUserById(c, id)
+	if errs != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errs.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"User": user})
+
+}
+
+func (h *UserHandler) handleUpdateUser(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Id is required"})
+		return
+	}
+
+	_, errs := h.querier.GetUserById(c, id)
+	if errs != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "here"})
+		return
+	}
+
+	var req repo.UpdateUserProfileParams
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, errs := h.querier.UpdateUserProfile(c, req)
+	if errs != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errs.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"User Updated": user})
+}
+
 func (h *UserHandler) handleUserMatch(c *gin.Context) {
+	id1 := c.Param("id1")
+	id2 := c.Param("id2")
+
+	if id1 == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Id1 is required"})
+		return
+	}
+
+	if id2 == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Id2 is required"})
+		return
+	}
+
+	user1, errs := h.querier.GetUserById(c, id1)
+	if errs != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errs.Error()})
+		return
+	}
+
+	user2, errs := h.querier.GetUserById(c, id2)
+	if errs != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errs.Error()})
+		return
+	}
+
 	var req repo.CreateMatchParams
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
@@ -78,12 +150,13 @@ func (h *UserHandler) handleUserMatch(c *gin.Context) {
 		return
 	}
 
-	//score := CalculateMatchScore(*req.User1ID, *req.User2ID)
+	score, cat, _ := CalculateScore(user1[0].Preferences, user2[0].Preferences)
 
 	resp := repo.CreateMatchParams{
-		User1ID:    req.User1ID,
-		User2ID:    req.User2ID,
-		MatchScore: req.MatchScore,
+		User1ID:    &user1[0].ID,
+		User2ID:    &user2[0].ID,
+		MatchScore: score,
+		Status:     cat,
 	}
 
 	match, err := h.querier.CreateMatch(c, resp)
@@ -92,7 +165,7 @@ func (h *UserHandler) handleUserMatch(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, match)
+	c.JSON(http.StatusOK, gin.H{"match": match})
 
 }
 
@@ -148,27 +221,47 @@ func ValidateAndFormatNumber(number string) error {
 // 	return score
 // }
 
-// func CalculateScore(user1PrefsJSON, user2PrefsJSON string) (int, error) {
+func CalculateScore(user1Prefs, user2Prefs repo.PrefJson) (*int32, *string, error) {
+	var score int32 = 0
 
-//     var user1Prefs, user2Prefs Preferences
+	// Use reflection to iterate over struct fields dynamically
+	user1Value := reflect.ValueOf(user1Prefs)
+	user2Value := reflect.ValueOf(user2Prefs)
+	user1Type := reflect.TypeOf(user1Prefs)
 
-//     // Parse JSONB strings
-//     err := json.Unmarshal([]byte(user1PrefsJSON), &user1Prefs)
-//     if err != nil {
-//         return 0, err
-//     }
-//     err = json.Unmarshal([]byte(user2PrefsJSON), &user2Prefs)
-//     if err != nil {
-//         return 0, err
-//     }
+	totalPreferences := int32(user1Type.NumField()) // Count the number of preferences
+	maxPossibleScore := totalPreferences * 10       // Maximum possible score (each preference contributes up to 10)
 
-//     // Compute score based on preference overlap
-//     score := 0
-//     for key, weight1 := range user1Prefs {
-//         if weight2, exists := user2Prefs[key]; exists {
-//             score += int(weight1 * weight2 * 100) // Adjust scale as needed
-//         }
-//     }
+	for i := 0; i < user1Type.NumField(); i++ {
+		user1Field := user1Value.Field(i).String()
+		user2Field := user2Value.Field(i).String()
 
-//     return score, nil
-// }
+		// Apply scoring logic dynamically
+		if user1Field == user2Field {
+			score += 10 // Exact match
+		} else if user1Field != "" && user2Field != "" {
+			score += 5 // Both have a preference, but different values
+		}
+	}
+
+	// Convert score to a percentage
+	matchPercentage := (score * 100) / maxPossibleScore
+
+	// Convert score to a percentage and format it as a string with a '%'
+	// matchPercentage := fmt.Sprintf("%d%%", (score*100)/maxPossibleScore)
+
+	// Determine category based on percentage
+	var category string
+	switch {
+	case matchPercentage <= 30:
+		category = "Poor"
+	case matchPercentage > 30 && matchPercentage <= 60:
+		category = "Good"
+	case matchPercentage > 60 && matchPercentage <= 85:
+		category = "Very Good"
+	case matchPercentage > 85:
+		category = "Excellent"
+	}
+
+	return &matchPercentage, &category, nil
+}
