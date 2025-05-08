@@ -25,6 +25,13 @@ type Message struct {
 	Timestamp   pgtype.Timestamp `json:"timestamp"`
 }
 
+type PasswordReset struct {
+	ID     int32            `json:"id"`
+	UserID string           `json:"user_id"`
+	Token  string           `json:"token"`
+	Expiry pgtype.Timestamp `json:"expiry"`
+}
+
 type Room struct {
 	ID                 string           `json:"id"`
 	UserID             *string          `json:"user_id"`
@@ -43,7 +50,7 @@ type User struct {
 	Email          string           `json:"email"`
 	Password       string           `json:"password"`
 	Bio            string           `json:"bio"`
-	Preferences    PrefJson           `json:"preferences"`
+	Preferences    PrefJson         `json:"preferences"`
 	ProfilePicture *string          `json:"profile_picture"`
 	CreatedAt      pgtype.Timestamp `json:"created_at"`
 }

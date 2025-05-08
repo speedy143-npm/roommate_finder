@@ -1,15 +1,22 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"reflect"
 	"regexp"
 	"roommate-finder/db/repo"
+	"roommate-finder/utils"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	//"github.com/jackc/pgx/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -169,11 +176,112 @@ func (h *UserHandler) handleUserMatch(c *gin.Context) {
 
 }
 
+func (h *UserHandler) handleForgotPassword(c *gin.Context) {
+	type UserEmail struct {
+		Email string `json:"email"`
+	}
+
+	var req UserEmail
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, errs := h.querier.GetUserByEmail(c, req.Email)
+	if errs != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errs.Error()})
+		return
+	}
+
+	// Generate a reset token
+	resetToken, err := GenerateToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate reset token"})
+		return
+	}
+
+	expiryTime := time.Now().Add(30 * time.Minute)
+
+	// Convert to pgtype.Timestamp
+	pgExpiryTime := pgtype.Timestamp{Time: expiryTime}
+	fmt.Println(pgExpiryTime)
+
+	// Store token in the database with expiration time
+	resetParams := repo.ForgotPasswordParams{
+		UserID: user.ID,
+		Token:  resetToken,
+		//Expiry: pgExpiryTime, // Token valid for 30 minutes
+	}
+
+	if _, err := h.querier.ForgotPassword(c, resetParams); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Construct the password reset link
+	resetLink := fmt.Sprintf("https://roommatefinder.com/reset-password?token=%s", resetToken)
+	fmt.Println(resetLink)
+
+	// Send email with reset link (using a utility function)
+	err = utils.SendEmail(user.Email, "Password Reset Request", fmt.Sprintf("Click here to reset your password: %s", resetLink))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}) //"Failed to send reset email"
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password reset email sent"})
+}
+
+func (h *UserHandler) handleResetPassword(c *gin.Context) {
+	type ResetPasswordRequest struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+
+	// Verify token exists and is not expired
+	resetData, err := h.querier.GetResetToken(c, req.Token)
+	if err != nil || resetData[0].Expiry.Time.Before(time.Now()) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired reset token"})
+		return
+	}
+
+	// Hash new password
+	hashedPassword, err := HashPassword(req.NewPassword)
+
+	var reqp = repo.UpdateUserPasswordParams{
+		ID:       resetData[0].UserID,
+		Password: hashedPassword,
+	}
+
+	// Update password in database
+	_, err = h.querier.UpdateUserPassword(c, reqp)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	// Delete reset token after successful password change
+	err = h.querier.DeleteResetToken(c, req.Token)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete reset token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password successfully reset"})
+}
+
 // hashing password
 func HashPassword(password string) (string, error) {
 	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return "", err
+		return "Failed to hash password", err
 	}
 	return string(hashedBytes), nil
 }
@@ -209,16 +317,6 @@ func ValidateAndFormatNumber(number string) error {
 // func SaveProfilePicture(userID string, imageURL string, db *sql.DB) error {
 //     _, err := db.Exec("UPDATE users SET profile_picture = $1 WHERE id = $2", imageURL, userID)
 //     return err
-// }
-
-// func CalculateMatchScore(user1, user2 string) int32 {
-// 	score := int32(0)
-// 	for key, value := range user1.Preferences {
-// 		if user2.Preferences[key] == value {
-// 			score += 10 // Increase match score for similar preferences
-// 		}
-// 	}
-// 	return score
 // }
 
 func CalculateScore(user1Prefs, user2Prefs repo.PrefJson) (*int32, *string, error) {
@@ -264,4 +362,14 @@ func CalculateScore(user1Prefs, user2Prefs repo.PrefJson) (*int32, *string, erro
 	}
 
 	return &matchPercentage, &category, nil
+}
+
+// GenerateResetToken creates a secure random token
+func GenerateToken() (string, error) {
+	bytes := make([]byte, 32) // Generate 32 random bytes
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(bytes), nil
 }

@@ -93,6 +93,93 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteResetToken = `-- name: DeleteResetToken :exec
+DELETE FROM password_resets WHERE token = $1
+`
+
+func (q *Queries) DeleteResetToken(ctx context.Context, token string) error {
+	_, err := q.db.Exec(ctx, deleteResetToken, token)
+	return err
+}
+
+const forgotPassword = `-- name: ForgotPassword :one
+INSERT INTO password_resets (user_id, token)
+VALUES ($1, $2)
+RETURNING id, user_id, token, expiry
+`
+
+type ForgotPasswordParams struct {
+	UserID string `json:"user_id"`
+	Token  string `json:"token"`
+}
+
+func (q *Queries) ForgotPassword(ctx context.Context, arg ForgotPasswordParams) (PasswordReset, error) {
+	row := q.db.QueryRow(ctx, forgotPassword, arg.UserID, arg.Token)
+	var i PasswordReset
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Token,
+		&i.Expiry,
+	)
+	return i, err
+}
+
+const getResetToken = `-- name: GetResetToken :many
+SELECT id, user_id, token, expiry FROM password_resets
+WHERE token = $1
+LIMIT 1
+`
+
+func (q *Queries) GetResetToken(ctx context.Context, token string) ([]PasswordReset, error) {
+	rows, err := q.db.Query(ctx, getResetToken, token)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PasswordReset{}
+	for rows.Next() {
+		var i PasswordReset
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Token,
+			&i.Expiry,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT id, fname, lname, phoneno, email, password, bio, preferences, profile_picture, created_at FROM users
+WHERE email = $1
+LIMIT 1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Fname,
+		&i.Lname,
+		&i.Phoneno,
+		&i.Email,
+		&i.Password,
+		&i.Bio,
+		&i.Preferences,
+		&i.ProfilePicture,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getUserById = `-- name: GetUserById :many
 SELECT id, fname, lname, phoneno, email, password, bio, preferences, profile_picture, created_at FROM users
 WHERE id = $1
@@ -128,6 +215,36 @@ func (q *Queries) GetUserById(ctx context.Context, id string) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :one
+UPDATE users
+SET password = $2
+WHERE id = $1
+RETURNING id, fname, lname, phoneno, email, password, bio, preferences, profile_picture, created_at
+`
+
+type UpdateUserPasswordParams struct {
+	ID       string `json:"id"`
+	Password string `json:"password"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserPassword, arg.ID, arg.Password)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Fname,
+		&i.Lname,
+		&i.Phoneno,
+		&i.Email,
+		&i.Password,
+		&i.Bio,
+		&i.Preferences,
+		&i.ProfilePicture,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const updateUserProfile = `-- name: UpdateUserProfile :one

@@ -32,6 +32,8 @@ func (h *UserHandler) WireHttpHandler() http.Handler {
 	r.POST("/match/:id1/:id2", h.handleUserMatch)
 	r.GET("/user/:id", h.handleGetUser)
 	r.PATCH("/user/:id", h.handleUpdateUser)
+	r.PATCH("/forgot-password", h.handleForgotPassword)
+	r.PATCH("/reset-password", h.handleResetPassword)
 
 	return r
 }
