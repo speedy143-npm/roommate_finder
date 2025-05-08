@@ -29,3 +29,10 @@ CREATE TABLE messages (
     "message_text" TEXT NOT NULL,
     "timestamp" TIMESTAMP DEFAULT now()
 );
+
+CREATE TABLE password_resets (
+    "id" SERIAL PRIMARY KEY,
+    "user_id" VARCHAR(36) NOT NULL REFERENCES users("id") ON DELETE CASCADE,
+    "token" TEXT NOT NULL UNIQUE,
+    "expiry" TIMESTAMP DEFAULT CURRENT_TIMESTAMP + INTERVAL '30 minutes'
+);
