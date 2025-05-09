@@ -93,6 +93,15 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteExpiredTokens = `-- name: DeleteExpiredTokens :exec
+DELETE FROM password_resets WHERE expiry < NOW()
+`
+
+func (q *Queries) DeleteExpiredTokens(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredTokens)
+	return err
+}
+
 const deleteResetToken = `-- name: DeleteResetToken :exec
 DELETE FROM password_resets WHERE token = $1
 `

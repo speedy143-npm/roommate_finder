@@ -51,5 +51,9 @@ RETURNING *;
 -- name: DeleteResetToken :exec
 DELETE FROM password_resets WHERE token = $1;
 
+-- name: DeleteExpiredTokens :exec
+DELETE FROM password_resets WHERE expiry < NOW();
+
+
 
 
